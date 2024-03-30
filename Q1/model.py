@@ -19,6 +19,8 @@ class Gaussians:
         if self.device not in ("cpu", "cuda"):
             raise ValueError(f"Unsupported device: {self.device}")
 
+        self.use_spherical_harmonics = use_spherical_harmonics
+
         if init_type == "gaussians":
             if isotropic is not None:
                 raise ValueError((
@@ -67,7 +69,8 @@ class Gaussians:
         self.pre_act_opacities = data["pre_act_opacities"]
 
         # [Q 1.3.1] NOTE: Uncomment spherical harmonics code for question 1.3.1
-        if data.get("spherical_harmonics") is not None:
+        if self.use_spherical_harmonics and data.get("spherical_harmonics") is not None:
+            print("Loading Spherical Harmonics")
             self.spherical_harmonics = data["spherical_harmonics"]
 
         if self.device == "cuda":
@@ -88,7 +91,8 @@ class Gaussians:
         data["colours"] = torch.tensor(ply_gaussians["dc_colours"])
 
         # [Q 1.3.1] NOTE: Uncomment spherical harmonics code for question 1.3.1
-        data["spherical_harmonics"] = torch.tensor(ply_gaussians["sh"])
+        if self.use_spherical_harmonics:
+            data["spherical_harmonics"] = torch.tensor(ply_gaussians["sh"])
 
         if data["pre_act_scales"].shape[1] != 3:
             raise NotImplementedError("Currently does not support isotropic")
@@ -211,7 +215,8 @@ class Gaussians:
         self.pre_act_opacities = self.pre_act_opacities.cuda()
 
         # [Q 1.3.1] NOTE: Uncomment spherical harmonics code for question 1.3.1
-        self.spherical_harmonics = self.spherical_harmonics.cuda()
+        if self.use_spherical_harmonics:
+            self.spherical_harmonics = self.spherical_harmonics.cuda()
 
     def compute_cov_3D(self, quats: torch.Tensor, scales: torch.Tensor):
         """
@@ -563,12 +568,12 @@ class Scene:
 
         ### YOUR CODE HERE ###
         # HINT: Refer to README for a relevant equation.
-        transmittance = torch.ones((len(one_minus_alphas)-1, H, W), device=alphas.device, dtype=alphas.dtype)
+        #transmittance = torch.ones((len(one_minus_alphas)-1, H, W), device=alphas.device, dtype=alphas.dtype)
         # print("transmittance",transmittance.shape)
         # print("asefaefaefa", one_minus_alphas[:2].shape)
-        for i in range(1, len(one_minus_alphas)-1):
-            transmittance[i] = torch.prod(one_minus_alphas[:i], dim=0)  # (N, H, W)
-
+        #for i in range(1, len(one_minus_alphas)-1):
+        #   transmittance[i] = torch.prod(one_minus_alphas[:i], dim=0)  # (N, H, W)
+		transmittance = torch.cumprod(one_minus_alphas, dim=0)[:-1]  # (N, H, W)
         # Post processing for numerical stability
         transmittance = torch.where(transmittance < 1e-4, 0.0, transmittance)  # (N, H, W)
 
@@ -699,15 +704,18 @@ class Scene:
         means_3D = self.gaussians.means[idxs]
 
         # For questions 1.1, 1.2 and 1.3.2, use the below line of code for colours.
-        # colours = self.gaussians.colours[idxs]
+        if not self.gaussians.use_spherical_harmonics:
+            colours = self.gaussians.colours[idxs]
 
         # [Q 1.3.1] For question 1.3.1, uncomment the below three lines to calculate the
         # colours instead of using self.gaussians.colours[idxs]. You may also comment
         # out the above line of code since it will be overwritten anyway.
 
-        spherical_harmonics = self.gaussians.spherical_harmonics[idxs]
-        gaussian_dirs = self.calculate_gaussian_directions(means_3D, camera)
-        colours = colours_from_spherical_harmonics(spherical_harmonics, gaussian_dirs)
+        if self.gaussians.use_spherical_harmonics:
+            spherical_harmonics = self.gaussians.spherical_harmonics[idxs]
+            gaussian_dirs = self.calculate_gaussian_directions(means_3D, camera)
+            colours = colours_from_spherical_harmonics(spherical_harmonics, gaussian_dirs)
+
 
         # Apply activations
         quats, scales, opacities = self.gaussians.apply_activations(
@@ -781,5 +789,8 @@ class Scene:
         ### YOUR CODE HERE ###
         # HINT: Think about how to get the camera origin in the world frame.
         # HINT: Do not forget to normalize the computed directions.
-        gaussian_dirs =   # (N, 3)
+        camera_position = camera.get_camera_center()  # (1, 3)
+        direction_vectors = means_3D - camera_position  # (N, 3)
+        gaussian_dirs = direction_vectors / direction_vectors.norm(dim=-1, keepdim=True)
+
         return gaussian_dirs
