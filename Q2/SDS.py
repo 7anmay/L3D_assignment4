@@ -90,6 +90,7 @@ class SDS:
             latents (tensor): latent representation. shape (1, 4, 64, 64)
         """
         # check the shape of the image should be 512x512
+        print("imggggggggggggggggg", img.shape)
         assert img.shape[-2:] == (512, 512), "Image shape should be 512x512"
 
         img = 2 * img - 1  # [0, 1] => [-1, 1]
@@ -147,23 +148,26 @@ class SDS:
             dtype=torch.long,
             device=self.device,
         )
-
+        
+        eps = torch.normal(
+            0, 1, latents.shape, device=self.device, dtype=self.precision_t
+        )
+        zt = torch.sqrt(self.alphas[t])*latents + torch.sqrt(1-self.alphas[t])*eps
         # predict the noise residual with unet, NO grad!
         with torch.no_grad():
             ### YOUR CODE HERE ###
- 
-
+            eps_hat = self.unet(zt, t, text_embeddings)["sample"]
             if text_embeddings_uncond is not None and guidance_scale != 1:
                 ### YOUR CODE HERE ###
-                pass
- 
-
+                eps_u = self.unet(zt, t, text_embeddings_uncond)["sample"]
+                eps_c = eps_hat
+                eps_hat = eps_u +  guidance_scale * (eps_c - eps_u)
 
         # Compute SDS loss
         w = 1 - self.alphas[t]
         ### YOUR CODE HERE ###
-
-
-        loss = 
+        delta = w * (eps_hat - eps) * grad_scale
+        target = zt - delta
+        loss = F.mse_loss(latents, target)
 
         return loss

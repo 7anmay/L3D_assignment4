@@ -14,11 +14,18 @@ from data_utils_harder_scene import get_nerf_datasets, trivial_collate
 from pytorch3d.renderer import PerspectiveCameras
 from skimage.metrics import peak_signal_noise_ratio, structural_similarity
 
+
+baseline = True
 def make_trainable(gaussians):
 
     ### YOUR CODE HERE ###
     # HINT: You can access and modify parameters from gaussians
-    pass
+    gaussians.means.requires_grad = True
+    gaussians.pre_act_scales.requires_grad = True
+    gaussians.pre_act_opacities.requires_grad = True
+    gaussians.colours.requires_grad = True
+    if not gaussians.is_isotropic:
+        gaussians.pre_act_quats.requires_grad = True    
 
 def setup_optimizer(gaussians):
 
@@ -30,14 +37,14 @@ def setup_optimizer(gaussians):
     # HINT: Consider reducing the learning rates for parameters that seem to vary too
     # fast with the default settings.
     # HINT: Consider setting different learning rates for different sets of parameters.
+    # HINT: Consider setting different learning rates for different sets of parameters.
     parameters = [
-        {'params': [gaussians.pre_act_opacities], 'lr': 0.05, "name": "opacities"},
-        {'params': [gaussians.pre_act_scales], 'lr': 0.05, "name": "scales"},
-        {'params': [gaussians.colours], 'lr': 0.05, "name": "colours"},
-        {'params': [gaussians.means], 'lr': 0.05, "name": "means"},
+        {'params': [gaussians.pre_act_opacities], 'lr': args.lr_opacities, "name": "opacities"},
+        {'params': [gaussians.pre_act_scales], 'lr': args.lr_scales, "name": "scales"},
+        {'params': [gaussians.colours], 'lr': args.lr_colours, "name": "colours"},
+        {'params': [gaussians.means], 'lr': args.lr_means, "name": "means"},
     ]
     optimizer = torch.optim.Adam(parameters, lr=0.0, eps=1e-15)
-    optimizer = None
 
     return optimizer
 
@@ -75,8 +82,8 @@ def run_training(args):
     train_itr = iter(train_loader)
 
     # Preparing some code for visualization
-    viz_gif_path_1 = os.path.join(args.out_path, "q1_harder_training_progress.gif")
-    viz_gif_path_2 = os.path.join(args.out_path, "q1_harder_training_final_renders.gif")
+    viz_gif_path_1 = os.path.join(args.out_path, "q1_harder_training_progress_baseline.gif")
+    viz_gif_path_2 = os.path.join(args.out_path, "q1_harder_training_final_renders_baseline.gif")
     viz_idxs = np.linspace(0, len(train_dataset)-1, 5).astype(np.int32)[:4]
 
     gt_viz_imgs = [(train_dataset[i]["image"]*255.0).numpy().astype(np.uint8) for i in viz_idxs]
@@ -117,12 +124,16 @@ def run_training(args):
         # HINT: Set img_size to (128, 128)
         # HINT: Get per_splat from args.gaussians_per_splat
         # HINT: camera is available above
-        pred_img = None
+        pred_img, pred_depth, pred_mask = scene.render(camera, args.gaussians_per_splat, (128, 128), 
+                                bg_colour=(0.0, 0.0, 0.0))
 
         # Compute loss
         ### YOUR CODE HERE ###
-        loss = None
-
+        if baseline:
+            loss = torch.nn.functional.mse_loss(pred_img, gt_img)
+        else:
+            loss = torch.nn.functional.mse_loss(pred_img, gt_img)
+            # loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image, gt_image))
         loss.backward()
         optimizer.step()
         optimizer.zero_grad()
@@ -135,11 +146,11 @@ def run_training(args):
                 viz_cameras, (128, 128)
             )
             viz_frames.append(viz_frame)
+            # Saving training progess GIF
+            imageio.mimwrite(viz_gif_path_1, viz_frames, loop=0, duration=(1/10.0)*1000)
 
     print("[*] Training Completed.")
 
-    # Saving training progess GIF
-    imageio.mimwrite(viz_gif_path_1, viz_frames, loop=0, duration=(1/10.0)*1000)
 
     # Creating renderings of the training views after training is completed.
     frames = []
@@ -160,7 +171,8 @@ def run_training(args):
             # HINT: Set img_size to (128, 128)
             # HINT: Get per_splat from args.gaussians_per_splat
             # HINT: camera is available above
-            pred_img = None
+            pred_img, pred_depth, pred_mask = scene.render(camera, args.gaussians_per_splat, (128, 128), 
+                                bg_colour=(0.0, 0.0, 0.0))
 
         pred_npy = pred_img.detach().cpu().numpy()
         pred_npy = (np.clip(pred_npy, 0.0, 1.0) * 255.0).astype(np.uint8)
@@ -186,7 +198,8 @@ def run_training(args):
             # HINT: Set img_size to (128, 128)
             # HINT: Get per_splat from args.gaussians_per_splat
             # HINT: camera is available above
-            pred_img = None
+            pred_img, pred_depth, pred_mask = scene.render(camera, args.gaussians_per_splat, (128, 128), 
+                                bg_colour=(0.0, 0.0, 0.0))
 
             gt_npy = gt_img.detach().cpu().numpy()
             pred_npy = pred_img.detach().cpu().numpy()
@@ -231,6 +244,18 @@ def get_args():
     parser.add_argument(
         "--viz_freq", default=20, type=int,
         help="Frequency with which visualization should be performed."
+    )
+    parser.add_argument(
+        "--lr_colours", default=0.01, type=float,
+    )
+    parser.add_argument(
+        "--lr_opacities", default=0.01, type=float,
+    )
+    parser.add_argument(
+        "--lr_scales", default=0.01, type=float,
+    )
+    parser.add_argument(
+        "--lr_means", default=0.01, type=float,
     )
     parser.add_argument("--device", default="cuda", type=str, choices=["cuda", "cpu"])
     args = parser.parse_args()

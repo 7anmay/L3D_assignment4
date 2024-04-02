@@ -19,7 +19,7 @@ class Gaussians:
         if self.device not in ("cpu", "cuda"):
             raise ValueError(f"Unsupported device: {self.device}")
 
-        self.use_spherical_harmonics = use_spherical_harmonics
+        self.use_spherical_harmonics = True
 
         if init_type == "gaussians":
             if isotropic is not None:
@@ -265,7 +265,7 @@ class Gaussians:
             S = torch.diag_embed(scales)  # (N, 3, 3)
             M = torch.matmul(R,S)  # (N, 3, 3)
             # (N, 3, 3)
-            cov_3D = torch.matmul(M,M.transpose(1,2))
+            cov_3D = torch.matmul(M, torch.transpose(M, 1, 2))
 
         return cov_3D
 
@@ -388,7 +388,7 @@ class Gaussians:
         # equation --> power = -0.5 * (x - μ)^T Σ^-1 (x - μ)
         d = points_2D - means_2D
         power = -0.5 * d @ cov_2D_inverse * d
-        power = torch.sum(-1)
+        power = power.sum(-1)
         # power = -0.5 * torch.einsum('nij,njk,nik->ni', points_2D - means_2D, cov_2D_inverse, points_2D - means_2D)
         return power
 
@@ -573,7 +573,7 @@ class Scene:
         # print("asefaefaefa", one_minus_alphas[:2].shape)
         #for i in range(1, len(one_minus_alphas)-1):
         #   transmittance[i] = torch.prod(one_minus_alphas[:i], dim=0)  # (N, H, W)
-		transmittance = torch.cumprod(one_minus_alphas, dim=0)[:-1]  # (N, H, W)
+        transmittance = torch.cumprod(one_minus_alphas, dim=0)[:-1]  # (N, H, W)
         # Post processing for numerical stability
         transmittance = torch.where(transmittance < 1e-4, 0.0, transmittance)  # (N, H, W)
 

@@ -73,7 +73,7 @@ def create_renders(args):
 
         imgs.append(np.array(resized))
 
-    gif_path = os.path.join(args.out_path, "q1_render.gif")
+    gif_path = os.path.join(args.out_path, "q1_render_SH.gif")
     imageio.mimwrite(gif_path, imgs, duration=1000.0*(1/10.0), loop=0)
 
 def get_args():

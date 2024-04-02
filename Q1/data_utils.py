@@ -10,6 +10,19 @@ from torch.utils.data import Dataset
 from pytorch3d.renderer.cameras import PerspectiveCameras, look_at_view_transform
 
 SH_C0 = 0.28209479177387814
+SH_C1 = 0.4886025119029199
+SH_C2_0 = 1.0925484305920792
+SH_C2_1 = -1.0925484305920792
+SH_C2_2 = 0.31539156525252005
+SH_C2_3 = -1.0925484305920792
+SH_C2_4 = 0.5462742152960396
+SH_C3_0 = -0.5900435899266435
+SH_C3_1 = 2.890611442640554
+SH_C3_2 = -0.4570457994644658
+SH_C3_3 = 0.3731763325901154
+SH_C3_4 = -0.4570457994644658
+SH_C3_5 = 1.445305721320277
+SH_C3_6 = -0.5900435899266435
 CMAP_JET = plt.get_cmap("jet")
 CMAP_MIN_NORM, CMAP_MAX_NORM = 5.0, 7.0
 
@@ -206,5 +219,39 @@ def colours_from_spherical_harmonics(spherical_harmonics, gaussian_dirs):
                                     RGB colour.
     """
     ### YOUR CODE HERE ###
-    colours = None
+    # c0 = spherical_harmonics[:, 0:3]
+    c = spherical_harmonics[:, 0:48].view(spherical_harmonics.shape[0], 16, 3)
+
+    x = gaussian_dirs[:, [0]] # (N,1)
+    y = gaussian_dirs[:, [1]]
+    z = gaussian_dirs[:, [2]]
+    # xx = torch.mul(x, x)
+    # yy = torch.mul(y, y)
+    # zz = torch.mul(z, z)
+    # xy = torch.mul(x, y)
+    # yz = torch.mul(y, z)
+    # xz = torch.mul(x, z)
+    xx = x * x
+    yy = y * y
+    zz = z * z
+    xy = x * y
+    yz = y * z
+    xz = x * z
+    print ("x shape", x.shape)
+
+    # (1, 14, 1)
+    cf =  torch.tensor([SH_C0,SH_C1,SH_C2_0,SH_C2_1, SH_C2_2, SH_C2_3, SH_C2_4, 
+                                 SH_C3_0, SH_C3_1, SH_C3_2, SH_C3_3, SH_C3_4, SH_C3_5, SH_C3_6], device=spherical_harmonics.device).view(1,14,1)
+
+    colours = (
+        cf[:, 0] * c[:, 0] - \
+        cf[:, 1] * y * c[:, 1] + cf[:,1] * z * c[:,2] - cf[:,1] * x * c[:,3] + \
+        cf[:, 2] * xy * c[:,4] + cf[:,3] * yz * c[:,5] + cf[:,4] * (2.0*zz-xx-yy) * c[:,6] + cf[:,5] * xz * c[:,7] + cf[:,6] * (xx-yy) * c[:,8] + \
+        cf[:, 7] * y * (3.0 * xx - yy) * c[:, 9] +  cf[:, 8] * xy * z * c[:, 10] + cf[:, 9] * y * (4.0 * zz - xx - yy) * c[:, 11] + \
+        cf[:, 10] * z * (2.0 * zz - 3.0 * xx - 3.0 * yy) * c[:, 12] + cf[:, 11] * x * (4.0 * zz - xx - yy) * c[:, 13] + cf[:, 12] * z * (xx - yy) * c[:, 14] + \
+        cf[:, 13] * x * (xx - 3.0 - yy) * c[:, 15]
+        )
+    # colours = torch.sum(colours, dim=1)
+    colours = torch.clamp(colours + 0.5, 0.0, 1.0)
+    print("colours", colours.shape)
     return colours
