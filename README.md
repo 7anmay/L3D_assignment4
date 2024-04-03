@@ -1,5 +1,5 @@
 
-# 0. Environment Setup
+# Environment Setup
 
   - plyfile
   - scikit-image
